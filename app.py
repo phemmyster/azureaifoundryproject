@@ -45,12 +45,6 @@ if "thread" not in st.session_state and "project_client" in st.session_state:
     try:
         st.session_state.thread = st.session_state.project_client.agents.create_thread()
         st.session_state.debug_info.append("✅ Thread created successfully")
-        
-        # Add the initial assistant greeting to our chat UI
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": "Hello! How can I assist you today?"
-        })
     except Exception as e:
         st.session_state.debug_info.append(f"❌ Failed to create thread: {e}")
         st.error(f"Failed to create thread: {e}")
@@ -108,55 +102,61 @@ if prompt := st.chat_input("Ask the agent..."):
             )
             st.session_state.debug_info.append(f"✅ Run created: {run.id if hasattr(run, 'id') else 'No ID'}")
             
-            # Wait for the run to complete
-            max_attempts = 10
+            # Wait for the run to complete with timeout
+            max_attempts = 30  # Increased timeout
+            run_status = None
             for attempt in range(max_attempts):
                 run_status = project_client.agents.get_run(thread_id=thread.id, run_id=run.id)
                 status = run_status.status if hasattr(run_status, 'status') else 'unknown'
                 st.session_state.debug_info.append(f"🔄 Run status: {status} (attempt {attempt + 1})")
                 
-                if status in ['completed', 'failed', 'cancelled', 'expired']:
+                if status == 'completed':
+                    break
+                elif status in ['failed', 'cancelled', 'expired']:
+                    st.session_state.debug_info.append(f"❌ Run ended with status: {status}")
                     break
                     
                 time.sleep(1)
+            else:
+                st.session_state.debug_info.append("❌ Run timed out")
             
-            # Retrieve assistant messages
+            # Retrieve assistant messages - get only the latest ones
             msgs = project_client.agents.list_messages(thread_id=thread.id)
-            
-            # Debug: Let's examine the full structure of the messages
             all_messages = list(msgs.text_messages)
             st.session_state.debug_info.append(f"📥 Retrieved {len(all_messages)} messages")
             
-            # Extract assistant responses - we need to identify which messages are from the assistant
-            assistant_texts = []
+            # Extract the most recent assistant response
+            assistant_reply = "*No reply received*"
             
-            for msg in all_messages:
+            # Look for the newest assistant message (reverse order)
+            for msg in reversed(all_messages):
                 msg_dict = msg.as_dict()
                 
-                # Check if this is an assistant message by looking at the content
-                # Assistant messages typically come after user messages in the thread
+                # Log message structure for debugging
+                if attempt == 0:  # Only log first message structure to avoid clutter
+                    st.session_state.debug_info.append(f"🔍 Message structure: {json.dumps(msg_dict, indent=2)}")
+                    attempt += 1
+                
+                # Check if this message contains assistant response
                 if "text" in msg_dict and "value" in msg_dict["text"]:
                     text_value = msg_dict["text"]["value"]
                     
-                    # Check if this looks like an assistant response (not the user's message)
-                    if text_value != prompt and not any(text_value == m["content"] for m in st.session_state.messages if m["role"] == "user"):
-                        assistant_texts.append(text_value)
-                        st.session_state.debug_info.append(f"💬 Potential assistant response: {text_value}")
+                    # Make sure it's not the user's message and not already in chat history
+                    if (text_value != prompt and 
+                        not any(text_value == m["content"] for m in st.session_state.messages)):
+                        assistant_reply = text_value
+                        st.session_state.debug_info.append(f"💬 Found assistant response: {text_value}")
+                        break
             
-            # If we didn't find any assistant responses, try a different approach
-            if not assistant_texts and len(all_messages) > 0:
-                # Get the last message that isn't the user's prompt
-                for msg in reversed(all_messages):
-                    msg_dict = msg.as_dict()
-                    if "text" in msg_dict and "value" in msg_dict["text"]:
-                        text_value = msg_dict["text"]["value"]
-                        if text_value != prompt:
-                            assistant_texts.append(text_value)
-                            break
-            
-            st.session_state.debug_info.append(f"💬 Found {len(assistant_texts)} assistant responses")
-            
-            assistant_reply = assistant_texts[-1] if assistant_texts else "*No reply received*"
+            # If we still haven't found a response, try a different approach
+            if assistant_reply == "*No reply received*" and all_messages:
+                # Get the last message that's different from the prompt
+                last_msg = all_messages[-1].as_dict()
+                if "text" in last_msg and "value" in last_msg["text"]:
+                    text_value = last_msg["text"]["value"]
+                    if text_value != prompt:
+                        assistant_reply = text_value
+                        st.session_state.debug_info.append(f"💬 Using last message as response: {text_value}")
             
         except Exception as e:
             st.session_state.debug_info.append(f"❌ Error during processing: {str(e)}")
@@ -169,12 +169,20 @@ if prompt := st.chat_input("Ask the agent..."):
     with st.chat_message("assistant"):
         st.markdown(assistant_reply)
 
-# Add a button to clear chat history
-if st.sidebar.button("Clear Chat"):
-    st.session_state.messages = []
-    st.session_state.debug_info = []
-    # Keep the thread but reset the UI
-    st.rerun()
+# Add a button to clear chat history and create a new thread
+if st.sidebar.button("Clear Chat & Create New Thread"):
+    try:
+        if "project_client" in st.session_state:
+            # Create a new thread
+            st.session_state.thread = st.session_state.project_client.agents.create_thread()
+            st.session_state.debug_info.append("✅ New thread created successfully")
+        
+        st.session_state.messages = []
+        st.session_state.debug_info = []
+        st.sidebar.success("Chat cleared and new thread created!")
+        st.rerun()
+    except Exception as e:
+        st.sidebar.error(f"❌ Failed to create new thread: {e}")
 
 # Add a button to test connection
 if st.sidebar.button("Test Connection"):
@@ -203,6 +211,8 @@ if st.sidebar.button("Inspect Thread"):
             for i, msg in enumerate(all_messages):
                 msg_dict = msg.as_dict()
                 st.sidebar.write(f"Message {i}:")
+                if "text" in msg_dict and "value" in msg_dict["text"]:
+                    st.sidebar.write(f"Content: {msg_dict['text']['value']}")
                 st.sidebar.json(msg_dict)
         else:
             st.sidebar.error("❌ Project client or thread not initialized")
