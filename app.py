@@ -37,6 +37,10 @@ if "agent" not in st.session_state and "project_client" in st.session_state:
     try:
         st.session_state.agent = st.session_state.project_client.agents.get_agent(AGENT_NAME)
         st.session_state.debug_info.append(f"✅ Agent '{AGENT_NAME}' retrieved successfully")
+        
+        # Log agent details for verification
+        agent_details = st.session_state.agent.as_dict()
+        st.session_state.debug_info.append(f"🔍 Agent details: {json.dumps(agent_details, indent=2)}")
     except Exception as e:
         st.session_state.debug_info.append(f"❌ Failed to get agent: {e}")
         st.error(f"Failed to get agent: {e}")
@@ -103,7 +107,7 @@ if prompt := st.chat_input("Ask the agent..."):
             st.session_state.debug_info.append(f"✅ Run created: {run.id if hasattr(run, 'id') else 'No ID'}")
             
             # Wait for the run to complete with timeout
-            max_attempts = 30  # Increased timeout
+            max_attempts = 30
             run_status = None
             for attempt in range(max_attempts):
                 run_status = project_client.agents.get_run(thread_id=thread.id, run_id=run.id)
@@ -120,7 +124,7 @@ if prompt := st.chat_input("Ask the agent..."):
             else:
                 st.session_state.debug_info.append("❌ Run timed out")
             
-            # Retrieve assistant messages - get only the latest ones
+            # Retrieve assistant messages
             msgs = project_client.agents.list_messages(thread_id=thread.id)
             all_messages = list(msgs.text_messages)
             st.session_state.debug_info.append(f"📥 Retrieved {len(all_messages)} messages")
@@ -131,11 +135,6 @@ if prompt := st.chat_input("Ask the agent..."):
             # Look for the newest assistant message (reverse order)
             for msg in reversed(all_messages):
                 msg_dict = msg.as_dict()
-                
-                # Log message structure for debugging
-                if attempt == 0:  # Only log first message structure to avoid clutter
-                    st.session_state.debug_info.append(f"🔍 Message structure: {json.dumps(msg_dict, indent=2)}")
-                    attempt += 1
                 
                 # Check if this message contains assistant response
                 if "text" in msg_dict and "value" in msg_dict["text"]:
@@ -169,6 +168,35 @@ if prompt := st.chat_input("Ask the agent..."):
     with st.chat_message("assistant"):
         st.markdown(assistant_reply)
 
+# Add a button to verify the agent
+if st.sidebar.button("Verify Agent"):
+    try:
+        if "project_client" in st.session_state and "agent" in st.session_state:
+            # Get the agent details
+            agent_details = st.session_state.agent.as_dict()
+            
+            # Display agent information
+            st.sidebar.subheader("Agent Verification")
+            st.sidebar.write(f"**Agent ID:** {agent_details.get('id', 'N/A')}")
+            st.sidebar.write(f"**Name:** {agent_details.get('name', 'N/A')}")
+            st.sidebar.write(f"**Description:** {agent_details.get('description', 'N/A')}")
+            st.sidebar.write(f"**Model:** {agent_details.get('model', 'N/A')}")
+            st.sidebar.write(f"**Created At:** {agent_details.get('created_at', 'N/A')}")
+            
+            # List all available agents for comparison
+            st.sidebar.subheader("All Available Agents")
+            agents = st.session_state.project_client.agents.list_agents()
+            for i, agent in enumerate(agents):
+                agent_info = agent.as_dict()
+                st.sidebar.write(f"{i+1}. {agent_info.get('name', 'Unnamed')} ({agent_info.get('id', 'No ID')})")
+                
+            st.session_state.debug_info.append("✅ Agent verification completed")
+        else:
+            st.sidebar.error("❌ Project client or agent not initialized")
+    except Exception as e:
+        st.sidebar.error(f"❌ Agent verification failed: {e}")
+        st.session_state.debug_info.append(f"❌ Agent verification failed: {e}")
+
 # Add a button to clear chat history and create a new thread
 if st.sidebar.button("Clear Chat & Create New Thread"):
     try:
@@ -191,6 +219,7 @@ if st.sidebar.button("Test Connection"):
             # Try to list agents to test connection
             agents = st.session_state.project_client.agents.list_agents()
             st.sidebar.success("✅ Connection test successful!")
+            st.sidebar.write(f"Found {len(list(agents))} agents")
             st.session_state.debug_info.append("✅ Connection test successful")
         else:
             st.sidebar.error("❌ Project client not initialized")
