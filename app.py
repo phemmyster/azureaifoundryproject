@@ -54,7 +54,7 @@ if "thread" not in st.session_state and "project_client" in st.session_state:
         st.error(f"Failed to create thread: {e}")
 
 # ---------- UI ----------
-st.title("💬 Orchestrator Agent Chat")
+st.title("Task systems Demo Agent")
 st.caption("Powered by Azure AI Foundry")
 
 # Display chat history
@@ -63,16 +63,16 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # Debug section (collapsible)
-with st.expander("Debug Information"):
-    st.write("Connection Details:")
-    st.code(f"Connection String: {CONN_STR}\nAgent Name: {AGENT_NAME}")
+# with st.expander("Debug Information"):
+#     st.write("Connection Details:")
+#     st.code(f"Connection String: {CONN_STR}\nAgent Name: {AGENT_NAME}")
     
-    st.write("Session State:")
-    st.json({k: str(type(v)) for k, v in st.session_state.items()})
+#     st.write("Session State:")
+#     st.json({k: str(type(v)) for k, v in st.session_state.items()})
     
-    st.write("Debug Log:")
-    for log_entry in st.session_state.debug_info:
-        st.text(log_entry)
+#     st.write("Debug Log:")
+#     for log_entry in st.session_state.debug_info:
+#         st.text(log_entry)
 
 # Chat input
 if prompt := st.chat_input("Ask the agent..."):
@@ -184,17 +184,17 @@ if st.sidebar.button("Verify Agent"):
             st.sidebar.write(f"**Created At:** {agent_details.get('created_at', 'N/A')}")
             
             # List all available agents for comparison
-            st.sidebar.subheader("All Available Agents")
-            agents = st.session_state.project_client.agents.list_agents()
-            for i, agent in enumerate(agents):
-                agent_info = agent.as_dict()
-                st.sidebar.write(f"{i+1}. {agent_info.get('name', 'Unnamed')} ({agent_info.get('id', 'No ID')})")
+            # st.sidebar.subheader("All Available Agents")
+            # agents = st.session_state.project_client.agents.list_agents()
+            # for i, agent in enumerate(agents):
+            #     agent_info = agent.as_dict()
+            #     st.sidebar.write(f"{i+1}. {agent_info.get('name', 'Unnamed')} ({agent_info.get('id', 'No ID')})")
                 
-            st.session_state.debug_info.append("✅ Agent verification completed")
+            # st.session_state.debug_info.append("✅ Agent verification completed")
         else:
             st.sidebar.error("❌ Project client or agent not initialized")
     except Exception as e:
-        st.sidebar.error(f"❌ Agent verification failed: {e}")
+        # st.sidebar.error(f"❌ Agent verification failed: {e}")
         st.session_state.debug_info.append(f"❌ Agent verification failed: {e}")
 
 # Add a button to clear chat history and create a new thread
